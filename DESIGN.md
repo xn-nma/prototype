@@ -28,6 +28,23 @@ Different links may set different lifetimes for subscriptions.
   - Want to avoid the need for "unsubscribe": only way to unsubscribe *now* is link-down
   - Should be some timeout based on medium?
 
+What do you do if you get *too many* messages in reply to a subscription?
+  - How do you know it's in reply to a subscription? (vs e.g. randomly generated messages)
+  - How to know it's not spam data
+  - Approach 1: keep first message received
+  - Approach 2: keep last message received
+  - Approach 3: keep or drop at random
+  - Prefer local subscriptions over neighbour subscriptions?
+      - Is this a potential side channel for a neighbour to figure out your local subscriptions?
+  - Forward before drop?
+      - "store-and-forward" vs "forward-and-store"
+  - Subscribe to less in future?
+
+
+What do you do if you get *very little* data in reply to a subscription
+  - could be in isolated part of network
+  - subscribe to more (larger prefixes? expand your local counter(s)?)
+
 Channel has secret ID
   - On creation, pick random unsigned counter value to use?
   - ID is channel public key?
@@ -46,6 +63,10 @@ Idea: when node sends new subscription packet:
       - node should keep a record of link peer subscriptions and rotate through them
 
 How to prevent all messages being stored forever? How to prevent traffic metadata to be extracted from a relay?
+
+Resource constrained devices
+  - Could be constrained in different ways. e.g. cpu vs network vs storage vs memory
+  - Use more exact subscription prefixes.
 
 Why is counter not public?
   - How to prevent neighbours figuring out your subscriptions?
@@ -128,3 +149,6 @@ Message:
                   - what does this mean for client compatibility?
           - should support binary data (e.g. sharing emojis/"stickers"/images)
                - stickers: support reference to some other message that is the sticker?
+
+Storage model:
+  - Message ids and matching by prefix would seem to fit a btree quite well.

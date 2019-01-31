@@ -58,13 +58,15 @@ Idea: counter period configurable per channel? (Probably can't be changed after 
 
 Idea: time bots
 
-Idea: channel rotation: new channel created; advertised in old.
+Channel rotation: new channel created; advertised in old.
   - new key
   - new feature set/configuration
-  - new generator parameters
-      - channel relays would need to be told about new params
+  - new generator parameters?
   - to add/remove participants?
-Problem: who does this? What makes them authorative? Race between multiple coordinators?
+  - resets counter
+Problems:
+  - who does the rotation? What makes them authorative? Race between multiple coordinators?
+  - channel relays would need to be told about new params
 
 Problem: freshly booted relay: neighbour does subscribe all. Channel history metadata (number of messages/sizes) leaked?
   - Is it a secure/privacy respecting solution to simply store some other messages too?
@@ -83,10 +85,10 @@ Idea: user channel: node always subscribes to private channel about self. Can be
 Terminology:
   - Generator: a mathematical function that give a channel id and a counter, derives a possible message bucket
   - Channel:
-  - Channel Repeater: knows
+  - Channel Repeater: knows generator, channel id: will repeat messages that match attempted counters
   - Link: can be 1-1 or broadcast
 
-Usually the first message is a subscription message.
+Usually the first message on a link is a subscription message.
   - Peers are free to ignore
 Though published messages may be unasked for.
   - Emergency broadcast system?
@@ -103,16 +105,26 @@ Message size guides (bytes):
 Messages should have packetization.
   - Use in-reply-to
 
-Envelope contents:
-  - counter
-  - is-continuation (related to packetization)
-  - in-reply-to
-  - contents
-      - should be an extensible format
-          - cbor?
-      - optional compression
-          - selectable compression algorithms? (gzip vs xz vs ... )
-              - what does this mean for client compatibility?
-      - should support binary data (e.g. sharing emojis/"stickers"/images)
-           - stickers: support reference to some other message that is the sticker?
+Protocol enclosure (this could be out of band. e.g. a http header; or xmpp enclosing type; etc)
+  - Type (subscriptionlist/message)
 
+Subscription List:
+  - list of message id prefixes
+
+Message:
+  - Public:
+      - message id
+      - derived property: hash
+  - Inside envelope:
+      - counter
+      - is-continuation (related to packetization)
+      - in-reply-to
+          - list of message ids + hash of entire message?
+      - payload
+          - should be an extensible format
+              - cbor?
+          - optional compression
+              - selectable compression algorithms? (gzip vs xz vs ... )
+                  - what does this mean for client compatibility?
+          - should support binary data (e.g. sharing emojis/"stickers"/images)
+               - stickers: support reference to some other message that is the sticker?

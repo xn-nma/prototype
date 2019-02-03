@@ -1,5 +1,6 @@
 local hydrogen = require "hydrogen"
 local secretbox = hydrogen.secretbox
+local random_uniform = hydrogen.random.uniform
 
 local channel_methods = {}
 local channel_mt = {
@@ -23,6 +24,7 @@ local function new_channel(node, key, on_message)
 
 		-- Collection of messages (pre last_counter) that are wanted
 		-- TODO: make this an ordered collection
+		-- TODO: (globally) lost messages shouldn't take up memory forever
 		wanted_old_messages = {};
 
 		-- User provided callback
@@ -58,7 +60,11 @@ function channel_methods:accumulate_subscription(channel_acc)
 
 	local c = self.last_counter
 	while true do
-		c = c + 1
+		-- As we get further from last_counter, take bigger steps
+		-- This randomness helps ensure that different nodes watching the same
+		-- channel don't end up with the same subscriptions
+		c = c + 1 + random_uniform(c-self.last_counter)
+
 		local msg_hash = get_hash(self, c)
 		if not channel_acc:contains(msg_hash) then
 			self.top_msg_hash_sent = c

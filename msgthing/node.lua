@@ -17,8 +17,12 @@ local function new_node()
 
 		neighbours = {};
 
-		min_sub_density = 17; -- RANDOM GUESS (32/2+a bit)
-		max_neighbour_propagate = 20; -- RANDOM GUESS
+		-- Heuristic to be tuned
+		min_sub_density = 512 * 0.6;
+
+		-- Heuristic to be tuned
+		-- (don't want to let an eagerly listening neighbour saturate our subscriptions?)
+		max_neighbour_propagate = 512 * 0.7;
 
 		stored_messages = {};
 	}, node_mt)
@@ -37,7 +41,7 @@ function node_methods:generate_subscription(skip_neighbour)
 			end
 		end
 		overload_factor = overload_factor + 1
-	until neighbour_acc:popcount() < self.max_neighbour_propagate
+	until neighbour_acc:popcount() <= self.max_neighbour_propagate
 
 	local acc
 	if self.n_channels == 0 then

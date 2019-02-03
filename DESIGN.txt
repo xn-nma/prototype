@@ -5,6 +5,7 @@ Project Aims:
   - Both high and low connectivity meshes
   - High and low density meshes (sometimes may just be a chain of single links)
   - 0 trust of neighbours required
+  - Should be possible to hide the channels you are in
 
 Applications:
   - P2P chat on mobile devices at crowded events, e.g. festivals
@@ -152,3 +153,6 @@ Message:
 
 Storage model:
   - Message ids and matching by prefix would seem to fit a btree quite well.
+
+References
+  - "Spray Routing": https://www.researchgate.net/publication/3335442_Efficient_Routing_in_Intermittently_Connected_Mobile_Networks_The_Multiple-Copy_Case

@@ -123,6 +123,8 @@ Message size guides (bytes):
   - IPv4: 576
   - UDP over IPv4: 508
   - IPv6: 1280
+  - Firebase Cloud Messaging (FCM): 4096
+  - Apple Push Notification Service (APNS): 4096
 
 Messages should have packetization.
   - Use in-reply-to

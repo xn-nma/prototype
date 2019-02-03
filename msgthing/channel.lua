@@ -1,6 +1,5 @@
 local hydrogen = require "hydrogen"
 local secretbox = hydrogen.secretbox
-local hash_matches = require "msgthing.common".hash_matches
 
 local channel_methods = {}
 local channel_mt = {
@@ -50,12 +49,10 @@ local function get_hash(self, msg_id)
 end
 
 function channel_methods:accumulate_subscription(channel_acc)
-	local channel_acc_s = string.pack(">I4", channel_acc)
-
 	-- Ask for old wanted messages first
 	for msg_hash in pairs(self.wanted_old_messages) do
-		if not hash_matches(channel_acc_s, msg_hash) then
-			return channel_acc | string.unpack(">I4", msg_hash)
+		if not channel_acc:contains(msg_hash) then
+			return channel_acc:add(msg_hash)
 		end
 	end
 
@@ -63,9 +60,9 @@ function channel_methods:accumulate_subscription(channel_acc)
 	while true do
 		c = c + 1
 		local msg_hash = get_hash(self, c)
-		if not hash_matches(channel_acc_s, msg_hash) then
+		if not channel_acc:contains(msg_hash) then
 			self.top_msg_hash_sent = c
-			return channel_acc | string.unpack(">I4", msg_hash)
+			return channel_acc:add(msg_hash)
 		end
 	end
 

@@ -1,7 +1,8 @@
-local hydrogen = require "hydrogen"
-local hydrogen_random_uniform = hydrogen.random.uniform
 local new_channel = require "msgthing.channel".new
 local new_neighbour = require "msgthing.neighbour".new
+local subscription_type = require "msgthing.subscription"
+local new_subscription = subscription_type.new
+local subscription_union = subscription_type.union
 
 local node_methods = {}
 local node_mt = {
@@ -17,58 +18,43 @@ local function new_node()
 		neighbours = {};
 
 		min_sub_density = 17; -- RANDOM GUESS (32/2+a bit)
-		max_neighbour_prop = 24; -- RANDOM GUESS
+		max_neighbour_propagate = 20; -- RANDOM GUESS
 
 		stored_messages = {};
 	}, node_mt)
-end
-
-local function popcount(x)
-	local n = 0
-	for i=0, 31 do
-		if x & (1<<i) ~= 0 then
-			n = n + 1
-		end
-	end
-	return n
 end
 
 function node_methods:generate_subscription(skip_neighbour)
 	local neighbour_acc
 	local overload_factor = 0
 	repeat
-		neighbour_acc = 0
+		neighbour_acc = new_subscription()
 		for neighbour in pairs(self.neighbours) do
 			if neighbour ~= skip_neighbour then
-				local ns = string.unpack(">I4", neighbour.subscriptions)
-				for _=0, neighbour.damping_factor + overload_factor do
-					ns = ns & ~(1 << hydrogen_random_uniform(32))
-				end
-				neighbour_acc = neighbour_acc | ns
+				local ns = neighbour.subscriptions
+				ns = ns:discard(neighbour.damping_factor + overload_factor)
+				neighbour_acc = neighbour_acc:union(ns)
 			end
 		end
 		overload_factor = overload_factor + 1
-	until popcount(neighbour_acc) < self.max_neighbour_prop
+	until neighbour_acc:popcount() < self.max_neighbour_propagate
 
 	local acc
 	if self.n_channels == 0 then
 		-- make up fake subscriptions
-		acc = neighbour_acc
-		repeat
-			acc = acc | (1 << hydrogen_random_uniform(32))
-		until popcount(acc) >= self.min_sub_density
+		acc = neighbour_acc:widen(self.min_sub_density)
 	else
-		local channel_acc = 0
+		local channel_acc = new_subscription()
 		repeat
 			-- balance equally across channels
 			-- TODO: weigh towards more active channels?
 			for channel in pairs(self.channels) do
 				channel_acc = channel:accumulate_subscription(channel_acc)
 			end
-			acc = channel_acc | neighbour_acc
-		until popcount(acc) >= self.min_sub_density
+			acc = subscription_union(channel_acc, neighbour_acc)
+		until acc:popcount() >= self.min_sub_density
 	end
-	return string.pack(">I4", acc)
+	return acc
 end
 
 function node_methods:new_channel(key, on_message)

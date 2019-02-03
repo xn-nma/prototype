@@ -1,5 +1,7 @@
-local hash_matches = require "msgthing.common".hash_matches
 local new_stable_bloom_filter = require "msgthing.stable_bloom_filter".new
+local subscription_type = require "msgthing.subscription"
+local new_subscription = subscription_type.new
+local deserialize_subscription = subscription_type.deserialize
 
 local neighbour_methods = {}
 local neighbour_mt = {
@@ -13,7 +15,7 @@ local function new_neighbour(node, broadcast)
 		node = node;
 
 		-- Neighbour's subscription
-		subscriptions = "\0\0\0\0";
+		subscriptions = new_subscription();
 
 		-- Stable Bloom filter of what they've already seen
 		already_seen = new_stable_bloom_filter(1024, 3, 0.005);
@@ -26,7 +28,7 @@ local function new_neighbour(node, broadcast)
 		damping_factor = 1;
 
 		-- The filter sent to this neighbour
-		our_subscription = "\0\0\0\0";
+		our_subscription = new_subscription();
 
 		-- Whether to process packets that match a local subscription
 		-- but that you never told the neighbour about
@@ -39,7 +41,7 @@ end
 
 
 function neighbour_methods:broadcast_message(msg_hash, data)
-	if not hash_matches(self.subscriptions, msg_hash) then
+	if not self.subscriptions:contains(msg_hash) then
 		return
 	end
 
@@ -55,12 +57,12 @@ end
 function neighbour_methods:send_subscription()
 	local subscription = self.node:generate_subscription(self)
 	self.our_subscription = subscription
-	self:broadcast("S", subscription)
+	self:broadcast("S", subscription:serialize())
 end
 
 function neighbour_methods:process_incoming_message(packet)
 	local msg_hash = packet:sub(1, 4)
-	if not self.process_unsubscribed and hash_matches(self.our_subscription, msg_hash) then
+	if not self.process_unsubscribed and self.our_subscription:contains(msg_hash) then
 		return
 	end
 
@@ -71,8 +73,7 @@ function neighbour_methods:process_incoming_message(packet)
 end
 
 function neighbour_methods:process_incoming_subscribe(packet)
-	assert(#packet == 4)
-	self.subscriptions = packet
+	self.subscriptions = deserialize_subscription(packet)
 end
 
 function neighbour_methods:send_messages()
@@ -82,7 +83,7 @@ function neighbour_methods:send_messages()
 	-- when updating this code, make sure that the messages
 	-- in the store isn't discoverable by hash
 	for msg_hash, by_hash in pairs(self.node.stored_messages) do
-		if hash_matches(self.subscriptions, msg_hash) then
+		if self.subscriptions:contains(msg_hash) then
 			for message in pairs(by_hash) do
 				self:broadcast_message(msg_hash, message)
 			end

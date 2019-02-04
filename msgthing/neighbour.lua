@@ -74,6 +74,12 @@ end
 
 function neighbour_methods:process_incoming_subscribe(packet)
 	self.subscriptions = deserialize_subscription(packet)
+
+	-- Reset already_seen
+	-- their new subscription should have removed messages they're no
+	-- longer interested in. If they want to receive the message again,
+	-- then that's their prerogative
+	self.already_seen:reset()
 end
 
 function neighbour_methods:send_messages()

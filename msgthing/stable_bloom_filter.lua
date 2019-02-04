@@ -44,7 +44,7 @@ local function new_stable_bloom_filter(n_cells, n_hashes, unlearn_rate)
 	}, stable_bloom_filter_mt)
 end
 
-local function cells(self, data)
+local function cells_for(self, data)
 	local hash_bytes_wanted = self.n_hashes * self.cell_bytes
 	-- need at least hydro_hash_BYTES_MIN
 	local hash_state = hash_init("stablebf", nil)
@@ -67,7 +67,7 @@ local function cells(self, data)
 end
 
 function stable_bloom_filter_methods:add(data)
-	for _, i in cells(self, data) do
+	for _, i in cells_for(self, data) do
 		-- increment cell
 		local x = self.cells[i]
 		if x < max_value then
@@ -89,12 +89,19 @@ function stable_bloom_filter_methods:add(data)
 end
 
 function stable_bloom_filter_methods:check(data)
-	for _, i in cells(self, data) do
+	for _, i in cells_for(self, data) do
 		if self.cells[i] == 0 then
 			return false
 		end
 	end
 	return true
+end
+
+function stable_bloom_filter_methods:reset()
+	local cells = self.cells
+	for i=1, self.n_cells do
+		cells[i] = 0
+	end
 end
 
 return {

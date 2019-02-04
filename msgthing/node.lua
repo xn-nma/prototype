@@ -35,7 +35,7 @@ function node_methods:generate_subscription(skip_neighbour)
 		neighbour_acc = new_subscription()
 		for neighbour in pairs(self.neighbours) do
 			if neighbour ~= skip_neighbour then
-				local ns = neighbour.subscriptions
+				local ns = neighbour.subscription
 				ns = ns:discard(neighbour.damping_factor + overload_factor)
 				neighbour_acc = neighbour_acc:union(ns)
 			end

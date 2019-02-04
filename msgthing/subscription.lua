@@ -29,7 +29,9 @@ local function new_subscription()
 end
 
 local function deserialize_subscription(raw)
-	assert(#raw == 64)
+	if #raw ~= 64 then
+		return nil, "invalid length"
+	end
 	return setmetatable({
 		string.unpack(">I8I8I8I8I8I8I8I8", raw)
 	}, subscription_mt)

@@ -15,7 +15,7 @@ local function new_neighbour(node, broadcast)
 		node = node;
 
 		-- Neighbour's subscription
-		subscriptions = new_subscription();
+		subscription = new_subscription();
 
 		-- Stable Bloom filter of what they've already seen
 		already_seen = new_stable_bloom_filter(1024, 3, 0.005);
@@ -41,7 +41,7 @@ end
 
 
 function neighbour_methods:broadcast_message(msg_hash, data)
-	if not self.subscriptions:contains(msg_hash) then
+	if not self.subscription:contains(msg_hash) then
 		return
 	end
 
@@ -73,7 +73,12 @@ function neighbour_methods:process_incoming_message(packet)
 end
 
 function neighbour_methods:process_incoming_subscribe(packet)
-	self.subscriptions = deserialize_subscription(packet)
+	local new_sub = deserialize_subscription(packet)
+	if not new_sub then
+		return
+	end
+
+	self.subscription = new_sub
 
 	-- Reset already_seen
 	-- their new subscription should have removed messages they're no
@@ -89,7 +94,7 @@ function neighbour_methods:send_messages()
 	-- when updating this code, make sure that the messages
 	-- in the store isn't discoverable by hash
 	for msg_hash, by_hash in pairs(self.node.stored_messages) do
-		if self.subscriptions:contains(msg_hash) then
+		if self.subscription:contains(msg_hash) then
 			for message in pairs(by_hash) do
 				self:broadcast_message(msg_hash, message)
 			end

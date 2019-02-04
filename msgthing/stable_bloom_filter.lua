@@ -55,8 +55,6 @@ local function cells_for(self, data)
 			return nil
 		end
 		local idx = (string.unpack(unpack_string, hash, h_idx) & cell_mask) + 1
-		assert(idx > 0, "my math failed")
-		assert(idx <= self.n_cells, "my math failed")
 		return h, idx
 	end, nil, 0
 end

@@ -75,7 +75,7 @@ function channel_methods:accumulate_subscription(channel_acc)
 	error("unreachable") -- luacheck: ignore 511
 end
 
-function channel_methods:send_msg(plaintext)
+function channel_methods:send_message(plaintext)
 	local msg_id = self:next_counter()
 	local msg_hash = get_hash(self, msg_id)
 	local ciphertext = secretbox.encrypt(plaintext, msg_id, "message\0", self.key)

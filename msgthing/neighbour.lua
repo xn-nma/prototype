@@ -108,7 +108,7 @@ function neighbour_methods:process_packet(packet_type, packet)
 	elseif packet_type == "S" then
 		return self:process_incoming_subscribe(packet)
 	else
-		error("unknown packet type")
+		error(string.format("unknown packet type %q", packet_type))
 	end
 end
 

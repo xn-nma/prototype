@@ -13,6 +13,7 @@ local subscription_mt = {
 
 -- Using 512 bits as 64 bytes seems like a reasonable subscription packet size
 local N_BITS = 512
+assert(N_BITS % 8 == 0, "invalid N_BITS")
 
 -- number of hash functions
 -- trade off of how quickly to fill subscription table
@@ -29,7 +30,7 @@ local function new_subscription()
 end
 
 local function deserialize_subscription(raw)
-	if #raw ~= 64 then
+	if #raw ~= N_BITS // 8 then
 		return nil, "invalid length"
 	end
 	return setmetatable({
@@ -127,7 +128,7 @@ end
 
 function subscription_methods:popcount()
 	local n = 0
-	for b=1, 8 do
+	for b=1, N_BITS//64 do
 		local x = self[b]
 		for i=0, 63 do
 			if x & (1<<i) ~= 0 then
@@ -139,6 +140,7 @@ function subscription_methods:popcount()
 end
 
 return {
+	N_BITS = N_BITS;
 	new = new_subscription;
 	deserialize = deserialize_subscription;
 	union = union;

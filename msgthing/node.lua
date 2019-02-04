@@ -18,11 +18,11 @@ local function new_node()
 		neighbours = {};
 
 		-- Heuristic to be tuned
-		min_sub_density = 512 * 0.6;
+		min_sub_density = subscription_type.N_BITS * 0.6;
 
 		-- Heuristic to be tuned
 		-- (don't want to let an eagerly listening neighbour saturate our subscriptions?)
-		max_neighbour_propagate = 512 * 0.7;
+		max_neighbour_propagate = subscription_type.N_BITS * 0.7;
 
 		stored_messages = {};
 	}, node_mt)

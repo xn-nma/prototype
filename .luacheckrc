@@ -1,4 +1,4 @@
-std = "lua53c"
+std = "lua53"
 files["spec"] = {
 	std = "+busted";
 }

@@ -14,13 +14,8 @@ local stable_bloom_filter_mt = {
 
 local max_value = 256
 
-local function log2(x)
-	local _, exp = math.frexp(x)
-	return exp - 1
-end
-
 local function new_stable_bloom_filter(n_cells, n_hashes, unlearn_rate)
-	assert(math.frexp(n_cells) == 0.5, "n_cells should be power of 2")
+	assert(math.log(n_cells, 2) % 1 == 0, "n_cells should be power of 2")
 	assert(n_cells / 8 % 1 == 0, "n_cells should be multiple of 8")
 	local cells = {}
 	for i=1, n_cells do
@@ -31,7 +26,7 @@ local function new_stable_bloom_filter(n_cells, n_hashes, unlearn_rate)
 		n_cells = n_cells;
 
 		-- How many bytes you need to index a cell
-		cell_bytes = math.ceil(log2(n_cells) / 8);
+		cell_bytes = math.ceil(math.log(n_cells, 2) / 8);
 
 		--
 		n_hashes = n_hashes;
@@ -51,7 +46,7 @@ local function cells_for(self, data)
 	hash_state:update(data)
 	local hash = hash_state:final(math.max(16, hash_bytes_wanted))
 	local unpack_string = string.format(">I%d", self.cell_bytes)
-	local cell_bits = log2(self.n_cells)
+	local cell_bits = math.log(self.n_cells, 2)
 	local cell_mask = (1 << cell_bits)-1
 	return function(_, last_i)
 		local h = last_i + 1

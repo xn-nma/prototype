@@ -74,7 +74,7 @@ function subscription_methods:add(hash)
 	for i=0, K-1 do
 		local bit = string.unpack(">I2", extended_hash, i*2+1) & (N_BITS - 1)
 		local idx = (bit >> 6) + 1
-		local shift = bit & 0x3F
+		local shift = bit & (64-1)
 		r[idx] = r[idx] | (1 << shift)
 	end
 	return setmetatable(r, subscription_mt)
@@ -88,7 +88,7 @@ function subscription_methods:contains(hash)
 	for i=0, K-1 do
 		local bit = string.unpack(">I2", extended_hash, i*2+1) & (N_BITS - 1)
 		local idx = (bit >> 6) + 1
-		local shift = bit & 0x3F
+		local shift = bit & (64-1)
 		if self[idx] & (1 << shift) == 0 then
 			return false
 		end

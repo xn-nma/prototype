@@ -32,6 +32,7 @@ end)
 local ca_1 = nodea:new_channel(nil, function(self, msg_id, data) -- luacheck: ignore 212
 	print(string.format("A receives message on channel 1 (msg id=%d): %s", msg_id, data))
 end)
+ca_1:tail_from(0)
 
 -- Send a message *before* B joins the channel
 ca_1:send_message("this 79 character message that may fill a traditional/old terminal screen width")
@@ -40,6 +41,7 @@ ca_1:send_message("this 79 character message that may fill a traditional/old ter
 local cb_1 = nodeb:new_channel(ca_1.key:asstring(), function(self, msg_id, data) -- luacheck: ignore 212
 	print(string.format("B receives message on channel 1 (msg id=%d): %s", msg_id, data))
 end)
+cb_1:tail_from(0)
 
 -- nodes now meet
 na_b:send_subscription()

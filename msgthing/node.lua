@@ -32,6 +32,7 @@ function node_methods:generate_subscription(skip_neighbour)
 	local neighbour_acc
 	local overload_factor = 0
 	repeat
+		-- XXX: does this result in leaking the number of neighbours?
 		neighbour_acc = new_subscription()
 		for neighbour in pairs(self.neighbours) do
 			if neighbour ~= skip_neighbour then
@@ -43,21 +44,23 @@ function node_methods:generate_subscription(skip_neighbour)
 		overload_factor = overload_factor + 1
 	until neighbour_acc:popcount() <= self.max_neighbour_propagate
 
-	local acc
-	if self.n_channels == 0 then
-		-- make up fake subscriptions
-		acc = neighbour_acc:widen(self.min_sub_density)
-	else
-		local channel_acc = new_subscription()
-		repeat
-			-- balance equally across channels
-			-- TODO: weigh towards more active channels?
-			for channel in pairs(self.channels) do
-				channel_acc = channel:accumulate_subscription(channel_acc)
+	local acc = neighbour_acc
+	repeat
+		-- balances equally across channels
+		-- TODO: weigh towards more active channels?
+		local non_null_channels = 0
+		for channel in pairs(self.channels) do
+			local tmp = channel:accumulate_subscription(acc)
+			if tmp ~= nil then
+				acc = tmp
+				non_null_channels = non_null_channels + 1
 			end
-			acc = subscription_union(channel_acc, neighbour_acc)
-		until acc:popcount() >= self.min_sub_density
-	end
+		end
+	until non_null_channels == 0 or acc:popcount() >= self.min_sub_density
+
+	-- make up fake subscriptions
+	acc = acc:widen(self.min_sub_density)
+
 	return acc
 end
 

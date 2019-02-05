@@ -104,6 +104,10 @@ Idea: Messages contain in-reply-to field?
 
 Idea: user channel: node always subscribes to private channel about self. Can be used to send invites?
 
+Problem: amplification attacks: a single subscription message could result in many messages.
+  - Require transport to have a handshake? (NOTE: UDP transport design restriction!)
+  - Amplification attacks in shared mediums is a weird concept
+
 Terminology:
   - Generator: a mathematical function that give a channel id and a counter, derives a possible message bucket
   - Channel:

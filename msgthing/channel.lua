@@ -8,6 +8,14 @@ local channel_mt = {
 	__index = channel_methods;
 }
 
+local function get_hash(key, msg_id)
+	-- TODO: hydrogen_hash should take secretbox key?
+	local hash_state = hydrogen.hash.init("msg_hash", key:asstring())
+	hash_state:update(string.pack(">I4", msg_id))
+	-- FIXME https://github.com/jedisct1/libhydrogen/issues/38
+	return hash_state:final(16):sub(1, 32//8)
+end
+
 local function new_channel(node, key, on_message)
 	if key == nil then
 		key = secretbox.keygen()
@@ -43,14 +51,6 @@ function channel_methods:next_counter()
 	return c
 end
 
-local function get_hash(self, msg_id)
-	-- TODO: hydrogen_hash should take secretbox key?
-	local hash_state = hydrogen.hash.init("msg_hash", self.key:asstring())
-	hash_state:update(string.pack(">I4", msg_id))
-	-- FIXME https://github.com/jedisct1/libhydrogen/issues/38
-	return hash_state:final(16):sub(1, 32//8)
-end
-
 function channel_methods:accumulate_subscription(channel_acc)
 	-- Ask for old wanted messages first
 	for msg_hash, msg_id in pairs(self.wanted_old) do
@@ -68,7 +68,7 @@ function channel_methods:accumulate_subscription(channel_acc)
 			-- channel don't end up with the same subscriptions
 			c = c + random_uniform(c-self.want_after)
 
-			local msg_hash = get_hash(self, c)
+			local msg_hash = get_hash(self.key, c)
 			if not channel_acc:contains(msg_hash) then
 				self.top_msg_hash_sent = math.max(self.top_msg_hash_sent, c)
 				return channel_acc:add(msg_hash)
@@ -87,7 +87,7 @@ end
 
 function channel_methods:send_message(plaintext)
 	local msg_id = self:next_counter()
-	local msg_hash = get_hash(self, msg_id)
+	local msg_hash = get_hash(self.key, msg_id)
 	local ciphertext = secretbox.encrypt(plaintext, msg_id, "message\0", self.key)
 	self.node:queue_message(msg_hash, ciphertext)
 end
@@ -102,7 +102,7 @@ local function find_msg_id(self, msg_hash)
 	if self.want_after ~= nil then
 		-- increment want_after looking for it....
 		for id=self.want_after, self.top_msg_hash_sent do
-			if msg_hash == get_hash(self, id) then
+			if msg_hash == get_hash(self.key, id) then
 				return id
 			end
 		end
@@ -125,7 +125,7 @@ function channel_methods:try_parse_msg(msg_hash, ciphertext)
 
 	if msg_id >= self.want_after then
 		for i=self.want_after, msg_id-1 do
-			self.wanted_old[get_hash(self, i)] = i
+			self.wanted_old[get_hash(self.key, i)] = i
 		end
 		self.want_after = msg_id + 1
 	else

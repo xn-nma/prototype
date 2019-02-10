@@ -24,6 +24,12 @@ local function get_hash(key, msg_id)
 	return hash_state:final(16):sub(1, 32//8)
 end
 
+local function get_full_hash(key, ciphertext)
+	local hash_state = hydrogen.hash.init("fullhash", key:asstring())
+	hash_state:update(ciphertext)
+	return hash_state:final(16)
+end
+
 local heads_mt = {
 	__name = "channel.heads";
 	-- For cbor to detect as array
@@ -60,7 +66,8 @@ local function new_channel(node, key, on_message)
 
 		-- Collection of messages that are wanted
 		-- TODO: this needs to be a much better data structure
-		wanted = {};
+		wanted_by_id = {}; -- indexed by id then by full_hash
+		wanted_by_hash = {}; -- map from msg_hash to msg_id for things in `wanted`
 		want_after = nil;
 
 		-- User provided callback
@@ -70,7 +77,7 @@ end
 
 function channel_methods:accumulate_subscription(channel_acc)
 	-- Ask for old wanted messages first
-	for msg_hash, msg_id in pairs(self.wanted) do
+	for msg_hash, msg_id in pairs(self.wanted_by_hash) do
 		if not channel_acc:contains(msg_hash) then
 			self.top_msg_hash_sent = math.max(self.top_msg_hash_sent, msg_id)
 			return channel_acc:add(msg_hash)
@@ -151,7 +158,7 @@ function channel_methods:queue_message(msg)
 		self.top_msg_seen = msg_id
 		self.node:queue_message(msg_hash, msg_obj)
 		self.heads = setmetatable({
-			{ id = msg_id, full_hash = "TODO" };
+			{ id = msg_id, full_hash = get_full_hash(self.key, ciphertext) };
 			n = 1;
 		}, heads_mt)
 		msg_id = msg_id + 1
@@ -168,14 +175,14 @@ function channel_methods:queue_message(msg)
 	self.top_msg_seen = msg_id
 	self.node:queue_message(msg_hash, msg_obj)
 	self.heads = setmetatable({
-		{ id = msg_id, full_hash = "TODO" };
+		{ id = msg_id, full_hash = get_full_hash(self.key, ciphertext) };
 		n = 1;
 	}, heads_mt)
 end
 
 local function find_msg_id(self, msg_hash)
 	-- see if the message is a wanted message
-	local msg_id = self.wanted[msg_hash]
+	local msg_id = self.wanted_by_hash[msg_hash]
 	if msg_id ~= nil then
 		return msg_id
 	end
@@ -215,7 +222,7 @@ function channel_methods:try_parse_msg(msg_hash, ciphertext)
 			type(ref.id) ~= "number" or
 			ref.id < 0 or ref.id > 0x80000000 or ref.id % 1 ~= 0 or
 			type(ref.full_hash) ~= "string" or
-			#ref.full_hash ~= 4 then
+			#ref.full_hash ~= 16 then
 			return nil, "invalid message: 'after' field malformed"
 		elseif ref.id >= msg_id then
 			return nil, "invalid message: message id precedes 'after'"
@@ -228,6 +235,7 @@ function channel_methods:try_parse_msg(msg_hash, ciphertext)
 		if pos - 1 ~= #result then
 			return nil, "invalid message: sync messages may not have a payload"
 		end
+		-- TODO: confirm that `msg_id - 1` is in `after`
 	end
 
 	return msg_id, after, result:sub(pos)
@@ -239,11 +247,32 @@ function channel_methods:process_incoming_message(msg_hash, ciphertext)
 		return nil
 	end
 
+	do -- Remove full hash if it was 'wanted'
+		local by_id = self.wanted_by_id[msg_id]
+		if by_id then
+			local full_hash = get_full_hash(self.key, ciphertext)
+			local msg = by_id[full_hash]
+			if msg ~= nil then
+				by_id[full_hash] = nil
+				if next(by_id) == nil then
+					self.wanted_by_id[msg_id] = nil
+					self.wanted_by_hash[msg_hash] = nil
+				end
+			end
+		end
+	end
+
 	for i=1, after.n do
 		local ref = after[i]
 		if ref.id >= self.want_after then
-			-- TODO: how to know if request has already been filled?
-			self.wanted[get_hash(self.key, ref.id)] = ref.id
+			local by_id = self.wanted_by_id[ref.id]
+			if by_id == nil then
+				by_id = {}
+				self.wanted_by_id[ref.id] = by_id
+				local ref_hash = get_hash(self.key, ref.id)
+				self.wanted_by_hash[ref_hash] = ref.id
+			end
+			by_id[ref.full_hash] = true
 		end
 	end
 

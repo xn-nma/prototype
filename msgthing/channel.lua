@@ -223,6 +223,13 @@ function channel_methods:try_parse_msg(msg_hash, ciphertext)
 	end
 	setmetatable(after, heads_mt)
 
+	if msg_id % limit == 0 then
+		-- is sync message
+		if pos - 1 ~= #result then
+			return nil, "invalid message: sync messages may not have a payload"
+		end
+	end
+
 	return msg_id, after, result:sub(pos)
 end
 

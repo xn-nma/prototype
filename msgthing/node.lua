@@ -87,15 +87,16 @@ function node_methods:queue_message(msg_hash, data)
 end
 
 function node_methods:process_incoming_message(msg_hash, data)
-	-- Send to local channels
-	for channel in pairs(self.channels) do
-		channel:process_incoming_message(msg_hash, data)
-	end
-	-- Relay to neighbours
-	self:queue_message(msg_hash, {
+	local msg_obj = {
 		ref_count = 0;
 		ciphertext = data;
-	})
+	}
+	-- Send to local channels
+	for channel in pairs(self.channels) do
+		channel:process_incoming_message(msg_hash, msg_obj)
+	end
+	-- Relay to neighbours
+	self:queue_message(msg_hash, msg_obj)
 end
 
 return {

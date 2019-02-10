@@ -57,8 +57,8 @@ local function new_channel(node, key, on_message)
 
 		-- Last seen sync messages for each power of two
 		sync_messages = {
-			nil, nil, nil, nil, nil, -- limit_pow nils
-			{}, {}, {},
+			nil, nil, nil, nil, -- limit_pow -1 nils
+			{}, {}, {}, {},
 			{}, {}, {}, {}, {}, {}, {}, {},
 			{}, {}, {}, {}, {}, {}, {}, {},
 			{}, {}, {}, {}, {}, {}, {}, {}
@@ -150,7 +150,7 @@ function channel_methods:queue_message(msg)
 			ref_count = 1; -- for going into sync_messages
 			ciphertext = ciphertext;
 		}
-		for i=limit, 31 do
+		for i=limit_pow, 31 do
 			if msg_id % (1<<i) == 0 then
 				self.sync_messages[i][1] = msg_obj
 			end
@@ -181,17 +181,34 @@ function channel_methods:queue_message(msg)
 end
 
 local function find_msg_id(self, msg_hash)
-	-- see if the message is a wanted message
-	local msg_id = self.wanted_by_hash[msg_hash]
-	if msg_id ~= nil then
-		return msg_id
+	do -- see if the message is a known wanted message
+		local msg_id = self.wanted_by_hash[msg_hash]
+		if msg_id ~= nil then
+			return msg_id
+		end
 	end
 
 	if self.want_after ~= nil then
+		local c = math.max(self.top_msg_seen+1, self.want_after)
+
+		do -- check sync messages
+			local pow = 32
+			while true do
+				local msg_id = c + (pow - c%pow)
+				if msg_hash == get_hash(self.key, msg_id) then
+					return msg_id
+				end
+				if pow == 0x80000000 then
+					break
+				end
+				pow = pow << 1
+			end
+		end
+
 		-- increment want_after looking for it....
-		for id=self.want_after, self.top_msg_hash_sent do
-			if msg_hash == get_hash(self.key, id) then
-				return id
+		for msg_id=c, self.top_msg_hash_sent do
+			if msg_hash == get_hash(self.key, msg_id) then
+				return msg_id
 			end
 		end
 	end
@@ -241,18 +258,27 @@ function channel_methods:try_parse_msg(msg_hash, ciphertext)
 	return msg_id, after, result:sub(pos)
 end
 
-function channel_methods:process_incoming_message(msg_hash, ciphertext)
-	local msg_id, after, result = self:try_parse_msg(msg_hash, ciphertext)
+function channel_methods:process_incoming_message(msg_hash, msg_obj)
+	local msg_id, after, result = self:try_parse_msg(msg_hash, msg_obj.ciphertext)
 	if msg_id == nil then
 		return nil
 	end
 
-	do -- Remove full hash if it was 'wanted'
+	if msg_id % limit == 0 then
+		-- is a sync message: hang onto it!
+		msg_obj.ref_count = msg_obj.ref_count + 1
+		for i=limit_pow, 31 do
+			if msg_id % (1<<i) == 0 then
+				table.insert(self.sync_messages[i], msg_obj)
+			end
+		end
+	end
+
+	do -- Remove full hash if it was wanted
 		local by_id = self.wanted_by_id[msg_id]
 		if by_id then
-			local full_hash = get_full_hash(self.key, ciphertext)
-			local msg = by_id[full_hash]
-			if msg ~= nil then
+			local full_hash = get_full_hash(self.key, msg_obj.ciphertext)
+			if by_id[full_hash] ~= nil then
 				by_id[full_hash] = nil
 				if next(by_id) == nil then
 					self.wanted_by_id[msg_id] = nil

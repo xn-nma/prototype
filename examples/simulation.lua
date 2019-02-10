@@ -35,7 +35,7 @@ end)
 ca_1:tail_from(0)
 
 -- Send a message *before* B joins the channel
-ca_1:send_message("this 79 character message that may fill a traditional/old terminal screen width")
+ca_1:queue_message("this 79 character message that may fill a traditional/old terminal screen width")
 
 -- now have node b join the channel
 local cb_1 = nodeb:new_channel(ca_1.key:asstring(), function(self, msg_id, data) -- luacheck: ignore 212

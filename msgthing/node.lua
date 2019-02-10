@@ -2,7 +2,6 @@ local new_channel = require "msgthing.channel".new
 local new_neighbour = require "msgthing.neighbour".new
 local subscription_type = require "msgthing.subscription"
 local new_subscription = subscription_type.new
-local subscription_union = subscription_type.union
 
 local node_methods = {}
 local node_mt = {
@@ -78,6 +77,7 @@ function node_methods:new_neighbour(broadcast_cb)
 end
 
 function node_methods:queue_message(msg_hash, data)
+	data.ref_count = data.ref_count + 1
 	local by_hash = self.stored_messages[msg_hash]
 	if by_hash == nil then
 		by_hash = {}
@@ -92,7 +92,10 @@ function node_methods:process_incoming_message(msg_hash, data)
 		channel:process_incoming_message(msg_hash, data)
 	end
 	-- Relay to neighbours
-	self:queue_message(msg_hash, data)
+	self:queue_message(msg_hash, {
+		ref_count = 0;
+		ciphertext = data;
+	})
 end
 
 return {

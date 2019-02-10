@@ -79,12 +79,6 @@ function neighbour_methods:process_incoming_subscribe(packet)
 	end
 
 	self.subscription = new_sub
-
-	-- Reset already_seen
-	-- their new subscription should have removed messages they're no
-	-- longer interested in. If they want to receive the message again,
-	-- then that's their prerogative
-	self.already_seen:reset()
 end
 
 function neighbour_methods:send_messages()
@@ -96,7 +90,7 @@ function neighbour_methods:send_messages()
 	for msg_hash, by_hash in pairs(self.node.stored_messages) do
 		if self.subscription:contains(msg_hash) then
 			for message in pairs(by_hash) do
-				self:broadcast_message(msg_hash, message)
+				self:broadcast_message(msg_hash, message.ciphertext)
 			end
 		end
 	end

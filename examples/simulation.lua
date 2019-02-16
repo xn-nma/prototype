@@ -29,7 +29,7 @@ nc_b = nodec:new_neighbour(function(self, packet_type, data) -- luacheck: ignore
 end)
 
 -- ca_1 = channel as seen from node a, id '1'.
-local ca_1 = nodea:new_channel(nil, function(self, msg_id, data) -- luacheck: ignore 212
+local ca_1 = nodea:new_channel(nil, nil, function(self, msg_id, data) -- luacheck: ignore 212
 	print(string.format("A receives message on channel 1 (msg id=%d): %s", msg_id, data))
 end)
 ca_1:tail_from(0)
@@ -38,7 +38,7 @@ ca_1:tail_from(0)
 ca_1:queue_message("this 79 character message that may fill a traditional/old terminal screen width")
 
 -- now have node b join the channel
-local cb_1 = nodeb:new_channel(ca_1.key:asstring(), function(self, msg_id, data) -- luacheck: ignore 212
+local cb_1 = nodeb:new_channel(ca_1.key:asstring(), nil, function(self, msg_id, data) -- luacheck: ignore 212
 	print(string.format("B receives message on channel 1 (msg id=%d): %s", msg_id, data))
 end)
 cb_1:tail_from(0)

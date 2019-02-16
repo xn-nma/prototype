@@ -63,8 +63,8 @@ function node_methods:generate_subscription(skip_neighbour)
 	return acc
 end
 
-function node_methods:new_channel(key, on_message)
-	local channel = new_channel(self, key, on_message)
+function node_methods:new_channel(key, top_msg_id_seen, on_message)
+	local channel = new_channel(self, key, top_msg_id_seen, on_message)
 	self.channels[channel] = true
 	self.n_channels = self.n_channels + 1
 	return channel

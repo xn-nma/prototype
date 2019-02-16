@@ -36,19 +36,22 @@ local heads_mt = {
 	__len = function(self) return self.n end;
 }
 
-local function new_channel(node, key, on_message)
-	if key == nil then
-		key = secretbox.keygen()
-	elseif type(key) == "string" then
+local function new_channel(node, key, top_msg_id_seen, on_message)
+	if type(key) == "string" then
 		key = secretbox.newkey(key)
 	else
 		error("invalid key")
+	end
+	if top_msg_id_seen == nil then
+		top_msg_id_seen = -1
+	elseif type(top_msg_id_seen) ~= "number" or top_msg_id_seen < 0 then
+		error("invalid top_msg_id_seen")
 	end
 	return setmetatable({
 		node = node;
 		key = key;
 
-		top_msg_seen = -1;
+		top_msg_id_seen = top_msg_id_seen;
 		top_msg_hash_sent = -1;
 
 		-- Known DAG heads
@@ -75,6 +78,15 @@ local function new_channel(node, key, on_message)
 	}, channel_mt)
 end
 
+-- TODO: take channel properties should include:
+--  - admin keys
+--  - parent channel (optional)
+local function create_channel(node, on_message)
+	local key = secretbox.keygen()
+	local channel = new_channel(node, key, nil, on_message)
+	return channel
+end
+
 function channel_methods:accumulate_subscription(channel_acc)
 	-- Ask for old wanted messages first
 	for msg_hash, msg_id in pairs(self.wanted_by_hash) do
@@ -85,7 +97,7 @@ function channel_methods:accumulate_subscription(channel_acc)
 	end
 
 	if self.want_after ~= nil then
-		local c = math.max(self.top_msg_seen+1, self.want_after)
+		local c = math.max(self.top_msg_id_seen+1, self.want_after)
 
 		-- 50/50 chance
 		if random_uniform(2) == 0 then
@@ -137,7 +149,7 @@ function channel_methods:tail_from(msg_id)
 end
 
 function channel_methods:queue_message(msg)
-	local msg_id = self.top_msg_seen + 1
+	local msg_id = self.top_msg_id_seen + 1
 	if msg_id >= 0x80000000 then
 		error("channel rotation required")
 	end
@@ -155,7 +167,7 @@ function channel_methods:queue_message(msg)
 				self.sync_messages[i][1] = msg_obj
 			end
 		end
-		self.top_msg_seen = msg_id
+		self.top_msg_id_seen = msg_id
 		self.node:queue_message(msg_hash, msg_obj)
 		self.heads = setmetatable({
 			{ id = msg_id, full_hash = get_full_hash(self.key, ciphertext) };
@@ -172,7 +184,7 @@ function channel_methods:queue_message(msg)
 		ref_count = 0;
 		ciphertext = ciphertext;
 	}
-	self.top_msg_seen = msg_id
+	self.top_msg_id_seen = msg_id
 	self.node:queue_message(msg_hash, msg_obj)
 	self.heads = setmetatable({
 		{ id = msg_id, full_hash = get_full_hash(self.key, ciphertext) };
@@ -189,7 +201,7 @@ local function find_msg_id(self, msg_hash)
 	end
 
 	if self.want_after ~= nil then
-		local c = math.max(self.top_msg_seen+1, self.want_after)
+		local c = math.max(self.top_msg_id_seen+1, self.want_after)
 
 		do -- check sync messages
 			local pow = 32
@@ -302,8 +314,8 @@ function channel_methods:process_incoming_message(msg_hash, msg_obj)
 		end
 	end
 
-	if msg_id > self.top_msg_seen then
-		self.top_msg_seen = msg_id
+	if msg_id > self.top_msg_id_seen then
+		self.top_msg_id_seen = msg_id
 	end
 
 	self:on_message(msg_id, result)
@@ -313,4 +325,5 @@ end
 
 return {
 	new = new_channel;
+	create = create_channel;
 }

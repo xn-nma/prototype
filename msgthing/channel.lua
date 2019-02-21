@@ -36,10 +36,10 @@ local heads_mt = {
 	__len = function(self) return self.n end;
 }
 
-local function new_channel(node, key, top_msg_id_seen, on_message)
+local function new_channel(room, key, top_msg_id_seen, on_message)
 	if type(key) == "string" then
 		key = secretbox.newkey(key)
-	else
+	elseif type(key) ~= "userdata" then -- TODO: check key type properly
 		error("invalid key")
 	end
 	if top_msg_id_seen == nil then
@@ -48,7 +48,7 @@ local function new_channel(node, key, top_msg_id_seen, on_message)
 		error("invalid top_msg_id_seen")
 	end
 	return setmetatable({
-		node = node;
+		room = room;
 		key = key;
 
 		top_msg_id_seen = top_msg_id_seen;
@@ -81,9 +81,9 @@ end
 -- TODO: take channel properties should include:
 --  - admin keys
 --  - parent channel (optional)
-local function create_channel(node, on_message)
+local function create_channel(room, on_message)
 	local key = secretbox.keygen()
-	local channel = new_channel(node, key, nil, on_message)
+	local channel = new_channel(room, key, nil, on_message)
 	return channel
 end
 
@@ -101,6 +101,8 @@ function channel_methods:accumulate_subscription(channel_acc)
 
 		-- 50/50 chance
 		if random_uniform(2) == 0 then
+			-- Ask for a random sync message
+			local x = 1<<(limit_pow+random_uniform(32-limit_pow))
 			-- pick next power of two message id
 			-- e.g. if x == 1500, we want:
 			-- 1500+(32-1500%32)=1504
@@ -109,23 +111,34 @@ function channel_methods:accumulate_subscription(channel_acc)
 			-- 1500+(256-1500%256)=1536
 			-- 1500+(512-1500%512)=1536
 			-- 1500+(1024-1500%1024)=2048
-			-- etc.
-			local pow = 32
-			while true do
-				local p = c + (pow - c%pow)
+			--
+			-- e.g. at 190: starting at `top+1`
+			-- powers of two:  32,  64, 128, 256, 512, 1024, 2048, ...
+			-- will ask for:  192, 192, 256, 256, 512, 1024, 2048, ...
+			--
+			-- now say you receive 256; we start again with `top+1`
+			-- powers of two   32,  64, 128, 256, 512, 1024, 2048, ...
+			-- will ask for:  288, 320, 384, 512, 512, 1024, 2048, ...
+			--
+			-- XXX: Is there an information leak of the sync message position?
+			-- (because of frequency of given msg_hash in a subscription)
+			-- Could it be solve by making sure you never pick a higher power?
+			-- e.g. in the above example, 256 would pick 768 instead
 
-				local msg_hash = get_hash(self.key, p)
-				if not channel_acc:contains(msg_hash) then
-					return channel_acc:add(msg_hash)
-				end
+			-- The operation we're doing is
+			-- `p = c + (x - c % x)` where x is a power of two
+			-- `x % y` where y is a power of two is equivalent to `x & (y-1)`
+			-- i.e. `p = c + x - (c & (x-1))`
+			-- which can be further simplified to:
+			local p = (c|(x-1))+1
 
-				if pow == 0x80000000 then
-					break
-				end
-
-				pow = pow << 1
+			local msg_hash = get_hash(self.key, p)
+			if not channel_acc:contains(msg_hash) then
+				return channel_acc:add(msg_hash)
 			end
 		end
+
+		-- TODO: check for rotation message?
 
 		while true do
 			local msg_hash = get_hash(self.key, c)
@@ -148,12 +161,28 @@ function channel_methods:tail_from(msg_id)
 	self.want_after = msg_id
 end
 
-function channel_methods:queue_message(msg)
+function channel_methods:tail(toggle)
+	if toggle then
+		if not self.want_after or self.want_after < self.top_msg_id_seen then
+			self:tail_from(self.top_msg_id_seen)
+		end
+	else
+		self.want_after = nil
+	end
+end
+
+function channel_methods:next_id_matches(subscription)
+	local next_msg_id = self.top_msg_id_seen + 1
+	local msg_hash = get_hash(self.key, next_msg_id)
+	return subscription:contains(msg_hash)
+end
+
+function channel_methods:write_message(msg)
 	local msg_id = self.top_msg_id_seen + 1
 	if msg_id >= 0x80000000 then
 		error("channel rotation required")
 	end
-	if msg_id % limit == 0 then
+	if msg_id & (limit-1) == 0 then
 		-- send sync message
 		local sync_msg = cbor.encode(self.heads)
 		local msg_hash = get_hash(self.key, msg_id)
@@ -168,7 +197,7 @@ function channel_methods:queue_message(msg)
 			end
 		end
 		self.top_msg_id_seen = msg_id
-		self.node:queue_message(msg_hash, msg_obj)
+		self.room.node:store_message(msg_hash, msg_obj)
 		self.heads = setmetatable({
 			{ id = msg_id, full_hash = get_full_hash(self.key, ciphertext) };
 			n = 1;
@@ -185,7 +214,7 @@ function channel_methods:queue_message(msg)
 		ciphertext = ciphertext;
 	}
 	self.top_msg_id_seen = msg_id
-	self.node:queue_message(msg_hash, msg_obj)
+	self.room.node:store_message(msg_hash, msg_obj)
 	self.heads = setmetatable({
 		{ id = msg_id, full_hash = get_full_hash(self.key, ciphertext) };
 		n = 1;

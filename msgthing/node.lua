@@ -1,4 +1,4 @@
-local new_channel = require "msgthing.channel".new
+local new_room = require "msgthing.room".new
 local new_neighbour = require "msgthing.neighbour".new
 local subscription_type = require "msgthing.subscription"
 local new_subscription = subscription_type.new
@@ -11,8 +11,8 @@ local node_mt = {
 
 local function new_node()
 	return setmetatable({
-		channels = {};
-		n_channels = 0;
+		rooms = {};
+		n_rooms = 0;
 
 		neighbours = {};
 
@@ -45,17 +45,19 @@ function node_methods:generate_subscription(skip_neighbour)
 
 	local acc = neighbour_acc
 	repeat
-		-- balances equally across channels
+		-- balances equally across rooms+channels
 		-- TODO: weigh towards more active channels?
-		local non_null_channels = 0
-		for channel in pairs(self.channels) do
-			local tmp = channel:accumulate_subscription(acc)
-			if tmp ~= nil then
-				acc = tmp
-				non_null_channels = non_null_channels + 1
+		local non_null_rooms = 0
+		for room in pairs(self.rooms) do
+			for _, channel in ipairs(room.channels) do
+				local tmp = channel:accumulate_subscription(acc)
+				if tmp ~= nil then
+					acc = tmp
+					non_null_rooms = non_null_rooms + 1
+				end
 			end
 		end
-	until non_null_channels == 0 or acc:popcount() >= self.min_sub_density
+	until non_null_rooms == 0 or acc:popcount() >= self.min_sub_density
 
 	-- make up fake subscriptions
 	acc = acc:widen(self.min_sub_density)
@@ -63,11 +65,11 @@ function node_methods:generate_subscription(skip_neighbour)
 	return acc
 end
 
-function node_methods:new_channel(key, top_msg_id_seen, on_message)
-	local channel = new_channel(self, key, top_msg_id_seen, on_message)
-	self.channels[channel] = true
-	self.n_channels = self.n_channels + 1
-	return channel
+function node_methods:new_room(on_message)
+	local room = new_room(self, on_message)
+	self.rooms[room] = true
+	self.n_rooms = self.n_rooms + 1
+	return room
 end
 
 function node_methods:new_neighbour(broadcast_cb)
@@ -76,7 +78,17 @@ function node_methods:new_neighbour(broadcast_cb)
 	return neighbour
 end
 
-function node_methods:queue_message(msg_hash, data)
+function node_methods:delete_neighbour(neighbour)
+	self.neighbours[neighbour] = nil
+end
+
+function node_methods:prepare_messages_for_subscription(subscription)
+	for room in pairs(self.rooms) do
+		room:prepare_messages_for_subscription(subscription)
+	end
+end
+
+function node_methods:store_message(msg_hash, data)
 	data.ref_count = data.ref_count + 1
 	local by_hash = self.stored_messages[msg_hash]
 	if by_hash == nil then
@@ -86,17 +98,21 @@ function node_methods:queue_message(msg_hash, data)
 	by_hash[data] = true
 end
 
-function node_methods:process_incoming_message(msg_hash, data)
+function node_methods:process_incoming_message(neighbour, msg_hash, data)
 	local msg_obj = {
 		ref_count = 0;
 		ciphertext = data;
 	}
-	-- Send to local channels
-	for channel in pairs(self.channels) do
-		channel:process_incoming_message(msg_hash, msg_obj)
+	-- Send to local rooms
+	for room in pairs(self.rooms) do
+		if room:process_incoming_message(neighbour, msg_hash, msg_obj) then
+			-- matching room found; no need to try others
+			-- (should never match more than one)
+			break
+		end
 	end
 	-- Relay to neighbours
-	self:queue_message(msg_hash, msg_obj)
+	self:store_message(msg_hash, msg_obj)
 end
 
 return {

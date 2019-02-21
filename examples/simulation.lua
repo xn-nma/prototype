@@ -28,20 +28,22 @@ nc_b = nodec:new_neighbour(function(self, packet_type, data) -- luacheck: ignore
 	nb_c:process_packet(packet_type, data)
 end)
 
--- ca_1 = channel as seen from node a, id '1'.
-local ca_1 = nodea:new_channel(nil, nil, function(self, msg_id, data) -- luacheck: ignore 212
-	print(string.format("A receives message on channel 1 (msg id=%d): %s", msg_id, data))
+-- ra_1 = room as seen from node a, id '1'.
+local ra_1 = nodea:new_room(function(channel, msg_id, data) -- luacheck: ignore 212
+	print(string.format("A receives message in room 1 (msg id=%d): %s", msg_id, data))
 end)
-ca_1:tail_from(0)
+local ca_1 = ra_1:create_channel()
+ra_1:tail(true)
 
--- Send a message *before* B joins the channel
-ca_1:queue_message("this 79 character message that may fill a traditional/old terminal screen width")
+-- Send a message *before* B joins the room
+ra_1:queue_message("this 79 character message that may fill a traditional/old terminal screen width")
 
--- now have node b join the channel
-local cb_1 = nodeb:new_channel(ca_1.key:asstring(), nil, function(self, msg_id, data) -- luacheck: ignore 212
-	print(string.format("B receives message on channel 1 (msg id=%d): %s", msg_id, data))
+-- now have node b join the room
+local rb_1 = nodeb:new_room(function(channel, msg_id, data) -- luacheck: ignore 212
+	print(string.format("B receives message in room 1 (msg id=%d): %s", msg_id, data))
 end)
-cb_1:tail_from(0)
+rb_1:new_channel(ca_1.key:asstring(), nil)
+rb_1:tail(true)
 
 -- nodes now meet
 na_b:send_subscription()

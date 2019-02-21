@@ -51,6 +51,8 @@ function neighbour_methods:broadcast_message(msg_hash, data)
 
 	self.already_seen:add(data)
 
+	-- TODO? remove bits from subscription??
+
 	self:broadcast("M", msg_hash .. data)
 end
 
@@ -69,7 +71,7 @@ function neighbour_methods:process_incoming_message(packet)
 	local ciphertext = packet:sub(5)
 
 	self.already_seen:add(ciphertext)
-	self.node:process_incoming_message(msg_hash, ciphertext)
+	self.node:process_incoming_message(self, msg_hash, ciphertext)
 end
 
 function neighbour_methods:process_incoming_subscribe(packet)
@@ -84,7 +86,9 @@ end
 function neighbour_methods:send_messages()
 	-- XXX: this currently sends *all* matching messages.
 	-- instead, it should just send a selectable number
-	--
+
+	self.node:prepare_messages_for_subscription(self.subscription)
+
 	-- when updating this code, make sure that the messages
 	-- in the store isn't discoverable by hash
 	for msg_hash, by_hash in pairs(self.node.stored_messages) do

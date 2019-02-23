@@ -2,5 +2,6 @@ return {
 	default = {
 		lua = "lua5.3";
 		lpath = "./?.lua";
+		cpath = "../lua-hydrogen/?.so";
 	};
 }

@@ -1,5 +1,7 @@
 # ȱ prototype
 
+https://linguistics.stackexchange.com/questions/30439/what-does-a-long-mid-high-unrounded-back-vowel-sound-like
+
 ## The Project 
 
 ȱ is a chat system under design. It:

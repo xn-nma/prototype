@@ -84,6 +84,8 @@ end
 local function create_channel(room, on_message)
 	local key = secretbox.keygen()
 	local channel = new_channel(room, key, nil, on_message)
+	-- Create message id 0
+	-- channel:store_message("START OF CHANNEL")
 	return channel
 end
 
@@ -92,12 +94,21 @@ function channel_methods:accumulate_subscription(channel_acc)
 	for msg_hash, msg_id in pairs(self.wanted_by_hash) do
 		if not channel_acc:contains(msg_hash) then
 			self.top_msg_hash_sent = math.max(self.top_msg_hash_sent, msg_id)
+			-- print("ASKING FOR WANTED", msg_id)
 			return channel_acc:add(msg_hash)
 		end
 	end
 
 	if self.want_after ~= nil then
 		local c = math.max(self.top_msg_id_seen+1, self.want_after)
+
+		-- if c == 0 then
+		-- 	local msg_hash = get_hash(self.key, 0)
+		-- 	if not channel_acc:contains(msg_hash) then
+		-- 		return channel_acc:add(msg_hash)
+		-- 	end
+		-- 	c = c + 1
+		-- end
 
 		-- 50/50 chance
 		if random_uniform(2) == 0 then
@@ -134,6 +145,7 @@ function channel_methods:accumulate_subscription(channel_acc)
 
 			local msg_hash = get_hash(self.key, p)
 			if not channel_acc:contains(msg_hash) then
+				-- print("ASKING FOR SYNC ", p)
 				return channel_acc:add(msg_hash)
 			end
 		end
@@ -144,6 +156,8 @@ function channel_methods:accumulate_subscription(channel_acc)
 			local msg_hash = get_hash(self.key, c)
 			if not channel_acc:contains(msg_hash) then
 				self.top_msg_hash_sent = math.max(self.top_msg_hash_sent, c)
+
+				-- print("ASKING FOR TAIL", c)
 				return channel_acc:add(msg_hash)
 			end
 
@@ -197,6 +211,7 @@ function channel_methods:write_message(msg)
 			end
 		end
 		self.top_msg_id_seen = msg_id
+		print("STORING SYNC MESSAGE", msg_id)
 		self.room.node:store_message(msg_hash, msg_obj)
 		self.heads = setmetatable({
 			{ id = msg_id, full_hash = get_full_hash(self.key, ciphertext) };
@@ -214,6 +229,7 @@ function channel_methods:write_message(msg)
 		ciphertext = ciphertext;
 	}
 	self.top_msg_id_seen = msg_id
+	print("STORING MESSAGE", msg_id, msg)
 	self.room.node:store_message(msg_hash, msg_obj)
 	self.heads = setmetatable({
 		{ id = msg_id, full_hash = get_full_hash(self.key, ciphertext) };
@@ -302,6 +318,7 @@ end
 function channel_methods:process_incoming_message(msg_hash, msg_obj)
 	local msg_id, after, result = self:try_parse_msg(msg_hash, msg_obj.ciphertext)
 	if msg_id == nil then
+		print("FAILED TO PARSE MESSAGE", after)
 		return nil
 	end
 
@@ -323,6 +340,7 @@ function channel_methods:process_incoming_message(msg_hash, msg_obj)
 				by_id[full_hash] = nil
 				if next(by_id) == nil then
 					self.wanted_by_id[msg_id] = nil
+					print("REMOVED", msg_id)
 					self.wanted_by_hash[msg_hash] = nil
 				end
 			end
@@ -331,6 +349,7 @@ function channel_methods:process_incoming_message(msg_hash, msg_obj)
 
 	for i=1, after.n do
 		local ref = after[i]
+		print("AFTER", ref.id)--, ref.msg_hash, ref.full_hash)
 		if ref.id >= self.want_after then
 			local by_id = self.wanted_by_id[ref.id]
 			if by_id == nil then

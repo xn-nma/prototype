@@ -46,6 +46,7 @@ function room_methods:process_incoming_message(neighbour, msg_hash, msg_obj)
 	for _, channel in ipairs(self.channels) do
 		if channel:process_incoming_message(msg_hash, msg_obj) then
 			if #self.queued_messages > 0 and channel:next_id_matches(neighbour.subscription) then
+				print("TAIL FOUND")
 				-- TODO: want to process as many as possible before attempting?
 				local queued_msg = self.queued_messages:pop()
 				channel:write_message(queued_msg.message)
@@ -74,6 +75,7 @@ function room_methods:prepare_messages_for_subscription(subscription)
 
 	local most_recent_channel = self.channels[#self.channels]
 	while most_recent_channel:next_id_matches(subscription) do
+		print("NEW SUBSCRIPTION MATCHED")
 		local queued_msg = self.queued_messages:pop()
 		most_recent_channel:write_message(queued_msg.message)
 		if queued_msg.on_written then
@@ -94,6 +96,7 @@ function room_methods:queue_message(msg, on_written)
 	local most_recent_channel = self.channels[#self.channels]
 	for neighbour in pairs(self.node.neighbours) do
 		if most_recent_channel:next_id_matches(neighbour.subscription) then
+			print("FOUND EXISTING SUBSCRIPTION")
 			most_recent_channel:write_message(msg)
 			if on_written then
 				on_written()
@@ -103,6 +106,7 @@ function room_methods:queue_message(msg, on_written)
 	end
 
 	-- otherwise we queue up message for a future subscriber
+	print("QUEUING MESSAGE FOR LATER")
 	self.queued_messages:push({
 		message = msg;
 		on_written = on_written;

@@ -86,7 +86,7 @@ end
 function neighbour_methods:send_messages()
 	-- XXX: this currently sends *all* matching messages.
 	-- instead, it should just send a selectable number
-
+	print("NEIGHBOUR SENDING")
 	self.node:prepare_messages_for_subscription(self.subscription)
 
 	-- when updating this code, make sure that the messages

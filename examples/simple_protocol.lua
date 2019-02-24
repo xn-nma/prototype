@@ -120,7 +120,11 @@ end
 local function connect(node, host, port)
 	assert(cqueues.running(), "must call from a cq")
 
-	local peer = assert(cs.connect(host, port))
+	local peer = assert(cs.connect({
+		host = host;
+		port = port;
+		nodelay = true;
+	}))
 	return add_peer(node, peer)
 end
 

@@ -28,7 +28,9 @@ control_room:new_channel(control_channel_key, nil):tail_from(last_tail)
 local m = cs.listen("127.0.0.1", 8000)
 cq:wrap(function()
 	while true do
-		local peer = m:accept()
+		local peer = m:accept({
+			nodelay = true;
+		})
 		print("Peer connected", peer)
 
 		simple_protocol.add_peer(node, peer)

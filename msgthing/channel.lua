@@ -89,7 +89,7 @@ local function create_channel(room, on_message)
 	local key = secretbox.keygen()
 	local channel = new_channel(room, key, nil, on_message)
 	-- Create message id 0
-	-- channel:store_message("START OF CHANNEL")
+	channel:write_message("START OF CHANNEL")
 	return channel
 end
 

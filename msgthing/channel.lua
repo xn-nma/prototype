@@ -16,6 +16,10 @@ local channel_mt = {
 local limit_pow = 5
 local limit = 1 << limit_pow -- i.e. 32
 
+local function is_sync_msg(msg_id)
+	return msg_id & (limit-1) == 0 and msg_id ~= 0
+end
+
 local function get_hash(key, msg_id)
 	-- TODO: hydrogen_hash should take secretbox key?
 	local hash_state = hydrogen.hash.init("msg_hash", key:asstring())
@@ -196,7 +200,7 @@ function channel_methods:write_message(msg)
 	if msg_id >= 0x80000000 then
 		error("channel rotation required")
 	end
-	if msg_id & (limit-1) == 0 then
+	if is_sync_msg(msg_id) then
 		-- send sync message
 		local sync_msg = cbor.encode(self.heads)
 		local msg_hash = get_hash(self.key, msg_id)
@@ -304,7 +308,7 @@ function channel_methods:try_parse_msg(msg_hash, ciphertext)
 	end
 	setmetatable(after, heads_mt)
 
-	if msg_id % limit == 0 then
+	if is_sync_msg(msg_id) then
 		-- is sync message
 		if pos - 1 ~= #result then
 			return nil, "invalid message: sync messages may not have a payload"
@@ -322,8 +326,8 @@ function channel_methods:process_incoming_message(msg_hash, msg_obj)
 		return nil
 	end
 
-	if msg_id % limit == 0 then
-		-- is a sync message: hang onto it!
+	if is_sync_msg(msg_id) or msg_id == 0 then
+		-- is a sync or creation message: hang onto it!
 		msg_obj.ref_count = msg_obj.ref_count + 1
 		for i=limit_pow, 31 do
 			if msg_id % (1<<i) == 0 then

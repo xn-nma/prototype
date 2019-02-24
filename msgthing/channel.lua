@@ -182,7 +182,8 @@ end
 function channel_methods:tail(toggle)
 	if toggle then
 		if not self.want_after or self.want_after < self.top_msg_id_seen then
-			self:tail_from(self.top_msg_id_seen)
+			local from = math.max(self.top_msg_id_seen, 0)
+			self:tail_from(from)
 		end
 	else
 		self.want_after = nil
@@ -249,25 +250,20 @@ local function find_msg_id(self, msg_hash)
 		end
 	end
 
-	if self.want_after ~= nil then
-		local c = math.max(self.top_msg_id_seen+1, self.want_after)
-
+	local want_after = self.want_after
+	if want_after ~= nil then
 		do -- check sync messages
-			local pow = 32
-			while true do
-				local msg_id = c + (pow - c%pow)
+			local c = math.max(want_after, 1)
+			for pow=limit_pow,31 do
+				local msg_id = (c|((1<<pow)-1))+1
 				if msg_hash == get_hash(self.key, msg_id) then
 					return msg_id
 				end
-				if pow == 0x80000000 then
-					break
-				end
-				pow = pow << 1
 			end
 		end
 
 		-- increment want_after looking for it....
-		for msg_id=c, self.top_msg_hash_sent do
+		for msg_id=want_after, self.top_msg_hash_sent do
 			if msg_hash == get_hash(self.key, msg_id) then
 				return msg_id
 			end
@@ -354,7 +350,7 @@ function channel_methods:process_incoming_message(msg_hash, msg_obj)
 	for i=1, after.n do
 		local ref = after[i]
 		print("AFTER", ref.id)--, ref.msg_hash, ref.full_hash)
-		if ref.id >= self.want_after then
+		if self.want_after and ref.id >= self.want_after then
 			local by_id = self.wanted_by_id[ref.id]
 			if by_id == nil then
 				by_id = {}

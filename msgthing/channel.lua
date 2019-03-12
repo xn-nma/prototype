@@ -1,43 +1,16 @@
+local message = require "msgthing.message"
+local get_hash = message.get_hash
+local get_full_hash = message.get_full_hash
+local is_sync_msg = message.is_sync_msg
+local limit_pow = message.limit_pow
 local hydrogen = require "hydrogen"
 local secretbox = hydrogen.secretbox
 local random_uniform = hydrogen.random.uniform
-local cbor = require "org.conman.cbor"
 
 local channel_methods = {}
 local channel_mt = {
 	__name = "channel";
 	__index = channel_methods;
-}
-
--- msg ids that are a multiple of 'limit'
--- are 'sync' messages
--- they should be held onto with longer lifetime than other messages
--- they should have no body
-local limit_pow = 5
-local limit = 1 << limit_pow -- i.e. 32
-
-local function is_sync_msg(msg_id)
-	return msg_id & (limit-1) == 0 and msg_id ~= 0
-end
-
-local function get_hash(key, msg_id)
-	-- TODO: hydrogen_hash should take secretbox key?
-	local hash_state = hydrogen.hash.init("msg_hash", key:asstring())
-	hash_state:update(string.pack(">I4", msg_id))
-	-- FIXME https://github.com/jedisct1/libhydrogen/issues/38
-	return hash_state:final(16):sub(1, 32//8)
-end
-
-local function get_full_hash(key, ciphertext)
-	local hash_state = hydrogen.hash.init("fullhash", key:asstring())
-	hash_state:update(ciphertext)
-	return hash_state:final(16)
-end
-
-local heads_mt = {
-	__name = "channel.heads";
-	-- For cbor to detect as array
-	__len = function(self) return self.n end;
 }
 
 local function new_channel(room, key, top_msg_id_seen, on_message)
@@ -57,10 +30,6 @@ local function new_channel(room, key, top_msg_id_seen, on_message)
 
 		top_msg_id_seen = top_msg_id_seen;
 		top_msg_hash_sent = -1;
-
-		-- Known DAG heads
-		-- Collection of full message hashes
-		heads = setmetatable({n=0}, heads_mt);
 
 		-- Last seen sync messages for each power of two
 		sync_messages = {
@@ -190,6 +159,16 @@ function channel_methods:tail(toggle)
 	end
 end
 
+-- Need to know the exact message id and full_hash of a message you want
+function channel_methods:want(msg_id, full_hash)
+	local by_id = self.wanted_by_id[msg_id]
+	if not by_id then
+		by_id = {}
+		self.wanted_by_id[msg_id] = by_id
+	end
+	by_id[full_hash] = true
+end
+
 function channel_methods:next_id_matches(subscription)
 	local next_msg_id = self.top_msg_id_seen + 1
 	local msg_hash = get_hash(self.key, next_msg_id)
@@ -203,48 +182,30 @@ function channel_methods:write_message(msg)
 	end
 	if is_sync_msg(msg_id) then
 		-- send sync message
-		local sync_msg = cbor.encode(self.heads)
-		local msg_hash = get_hash(self.key, msg_id)
-		local ciphertext = secretbox.encrypt(sync_msg, msg_id, "message\0", self.key)
-		local msg_obj = {
-			ref_count = 1; -- for going into sync_messages
-			ciphertext = ciphertext;
-		}
+		local sync_msg = self.room:encode_heads()
+		local msg_obj = message.encode(self.key, msg_id, sync_msg)
+		msg_obj.ref_count = msg_obj.ref_count + 1
 		for i=limit_pow, 31 do
 			if msg_id % (1<<i) == 0 then
 				self.sync_messages[i][1] = msg_obj
 			end
 		end
+		self.room:store_message(msg_obj)
+		self.room:set_head({ id = msg_id, full_hash = get_full_hash(self.key, msg_obj.ciphertext) })
 		self.top_msg_id_seen = msg_id
-		print("STORING SYNC MESSAGE", msg_id)
-		self.room.node:store_message(msg_hash, msg_obj)
-		self.heads = setmetatable({
-			{ id = msg_id, full_hash = get_full_hash(self.key, ciphertext) };
-			n = 1;
-		}, heads_mt)
 		msg_id = msg_id + 1
 	end
-
-	local msg_hash = get_hash(self.key, msg_id)
-	-- TODO: pad msg?
-	local plaintext = cbor.encode(self.heads) .. msg
-	local ciphertext = secretbox.encrypt(plaintext, msg_id, "message\0", self.key)
-	local msg_obj = {
-		ref_count = 0;
-		ciphertext = ciphertext;
-	}
+	local plaintext = self.room:encode_heads() .. msg
+	local msg_obj = message.encode(self.key, msg_id, plaintext)
+	self.room:store_message(msg_obj)
+	self.room:set_head({ id = msg_id, full_hash = get_full_hash(self.key, msg_obj.ciphertext) })
 	self.top_msg_id_seen = msg_id
-	print("STORING MESSAGE", msg_id, msg)
-	self.room.node:store_message(msg_hash, msg_obj)
-	self.heads = setmetatable({
-		{ id = msg_id, full_hash = get_full_hash(self.key, ciphertext) };
-		n = 1;
-	}, heads_mt)
 end
 
 local function find_msg_id(self, msg_hash)
 	do -- see if the message is a known wanted message
 		local msg_id = self.wanted_by_hash[msg_hash]
+		-- print("FIND MSG ID (WANTED)", msg_id)
 		if msg_id ~= nil then
 			return msg_id
 		end
@@ -256,6 +217,7 @@ local function find_msg_id(self, msg_hash)
 			local c = math.max(want_after, 1)
 			for pow=limit_pow,31 do
 				local msg_id = (c|((1<<pow)-1))+1
+				-- print("FIND MSG ID (SYNC)", msg_id)
 				if msg_hash == get_hash(self.key, msg_id) then
 					return msg_id
 				end
@@ -264,6 +226,7 @@ local function find_msg_id(self, msg_hash)
 
 		-- increment want_after looking for it....
 		for msg_id=want_after, self.top_msg_hash_sent do
+			-- print("FIND MSG ID (SEARCH)", msg_id)
 			if msg_hash == get_hash(self.key, msg_id) then
 				return msg_id
 			end
@@ -285,24 +248,10 @@ function channel_methods:try_parse_msg(msg_hash, ciphertext)
 		return nil, "unable to decrypt"
 	end
 
-	local after, pos, after_type = cbor.decode(result)
-	if after_type ~= "ARRAY" then
-		return nil, "invalid message: 'after' field malformed"
+	local after, pos = self.room:decode_heads(msg_id, result)
+	if after == nil then
+		return nil, pos
 	end
-	after.n = #after
-	for i=1, after.n do
-		local ref = after[i]
-		if type(ref) ~= "table" or
-			type(ref.id) ~= "number" or
-			ref.id < 0 or ref.id > 0x80000000 or ref.id % 1 ~= 0 or
-			type(ref.full_hash) ~= "string" or
-			#ref.full_hash ~= 16 then
-			return nil, "invalid message: 'after' field malformed"
-		elseif ref.id >= msg_id then
-			return nil, "invalid message: message id precedes 'after'"
-		end
-	end
-	setmetatable(after, heads_mt)
 
 	if is_sync_msg(msg_id) then
 		-- is sync message
@@ -340,7 +289,6 @@ function channel_methods:process_incoming_message(msg_hash, msg_obj)
 				by_id[full_hash] = nil
 				if next(by_id) == nil then
 					self.wanted_by_id[msg_id] = nil
-					print("REMOVED", msg_id)
 					self.wanted_by_hash[msg_hash] = nil
 				end
 			end
@@ -348,18 +296,7 @@ function channel_methods:process_incoming_message(msg_hash, msg_obj)
 	end
 
 	for i=1, after.n do
-		local ref = after[i]
-		print("AFTER", ref.id)--, ref.msg_hash, ref.full_hash)
-		if self.want_after and ref.id >= self.want_after then
-			local by_id = self.wanted_by_id[ref.id]
-			if by_id == nil then
-				by_id = {}
-				self.wanted_by_id[ref.id] = by_id
-				local ref_hash = get_hash(self.key, ref.id)
-				self.wanted_by_hash[ref_hash] = ref.id
-			end
-			by_id[ref.full_hash] = true
-		end
+		self.room:add_head(after[i])
 	end
 
 	if msg_id > self.top_msg_id_seen then

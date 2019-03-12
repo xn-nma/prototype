@@ -18,7 +18,8 @@ assert(N_BITS % 8 == 0, "invalid N_BITS")
 -- number of hash functions
 -- trade off of how quickly to fill subscription table
 -- approx#subscriptions = N_BITS / K * ln(2)
--- % of unwanted traffic = (1-e^(-K*N/N_BITS)^K
+-- % of unwanted traffic = (1-e^(-K*N/N_BITS))^K
+-- where N is the number of subscriptions
 local K = 8
 
 local function new_subscription()

@@ -88,19 +88,21 @@ function node_methods:prepare_messages_for_subscription(subscription)
 	end
 end
 
-function node_methods:store_message(msg_hash, data)
-	data.ref_count = data.ref_count + 1
+-- takes ownership of msg_obj
+function node_methods:store_message(msg_obj)
+	local msg_hash = msg_obj.msg_hash
 	local by_hash = self.stored_messages[msg_hash]
 	if by_hash == nil then
 		by_hash = {}
 		self.stored_messages[msg_hash] = by_hash
 	end
-	by_hash[data] = true
+	by_hash[msg_obj] = true
 end
 
 function node_methods:process_incoming_message(neighbour, msg_hash, data)
 	local msg_obj = {
 		ref_count = 0;
+		msg_hash = msg_hash;
 		ciphertext = data;
 	}
 	-- Send to local rooms
@@ -112,7 +114,7 @@ function node_methods:process_incoming_message(neighbour, msg_hash, data)
 		end
 	end
 	-- Relay to neighbours
-	self:store_message(msg_hash, msg_obj)
+	self:store_message(msg_obj)
 end
 
 return {

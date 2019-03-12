@@ -162,3 +162,9 @@ Storage model:
 
 References
   - "Spray Routing": https://www.researchgate.net/publication/3335442_Efficient_Routing_in_Intermittently_Connected_Mobile_Networks_The_Multiple-Copy_Case
+
+
+
+
+  - Avoid attaching message ids to outgoing messages until they about to leave the current node
+    To allow them to make it into a post-rotation channel: they should sit pending in the room object.

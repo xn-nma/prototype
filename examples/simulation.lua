@@ -1,6 +1,36 @@
 local hydrogen = require "hydrogen"
 local new_node = require "msgthing.node".new
 
+
+local log = {}
+do -- logging functions
+	local function e(c)
+		return "\27" .. c
+	end
+	local function esc(...)
+		return e("["..table.concat({...},";").."m")
+	end
+	local function fg(c)
+		return esc("38;5", c)
+	end
+	local function log_printf(prefix, ...)
+		local s = string.format(...)
+		if #s > 79 then
+			s = s:sub(1, 78) .. "…"
+		end
+		assert(io.stderr:write(prefix, s, esc(0), "\n"))
+	end
+	log.debug = function(...)
+		return log_printf(fg(243), ...)
+	end
+	log.info = function(...)
+		return log_printf(fg(253), ...)
+	end
+	log.error = function(...)
+		return log_printf(fg(160), ...)
+	end
+end
+
 -- Simulate 3 separate nodes
 local nodea = new_node()
 local nodeb = new_node()
@@ -9,28 +39,28 @@ local nodec = new_node()
 -- Create link between node a and node b
 local na_b, nb_a
 na_b = nodea:new_neighbour(function(self, packet_type, data) -- luacheck: ignore 212
-	print(string.format("A SENDS B %3d bytes of %s: %s", #data, packet_type, hydrogen.bin2hex(data)))
+	log.debug("A SENDS B %3d bytes of %s: %s", #data, packet_type, hydrogen.bin2hex(data))
 	nb_a:process_packet(packet_type, data)
 end)
 nb_a = nodeb:new_neighbour(function(self, packet_type, data) -- luacheck: ignore 212
-	print(string.format("B SENDS A %3d bytes of %s: %s", #data, packet_type, hydrogen.bin2hex(data)))
+	log.debug("B SENDS A %3d bytes of %s: %s", #data, packet_type, hydrogen.bin2hex(data))
 	na_b:process_packet(packet_type, data)
 end)
 
 -- Create link between node b and node c
 local nb_c, nc_b
 nb_c = nodeb:new_neighbour(function(self, packet_type, data) -- luacheck: ignore 212
-	print(string.format("B SENDS C %3d bytes of %s: %s", #data, packet_type, hydrogen.bin2hex(data)))
+	log.debug("B SENDS C %3d bytes of %s: %s", #data, packet_type, hydrogen.bin2hex(data))
 	nc_b:process_packet(packet_type, data)
 end)
 nc_b = nodec:new_neighbour(function(self, packet_type, data) -- luacheck: ignore 212
-	print(string.format("C SENDS B %3d bytes of %s: %s", #data, packet_type, hydrogen.bin2hex(data)))
+	log.debug("C SENDS B %3d bytes of %s: %s", #data, packet_type, hydrogen.bin2hex(data))
 	nb_c:process_packet(packet_type, data)
 end)
 
 -- ra_1 = room as seen from node a, id '1'.
 local ra_1 = nodea:new_room(function(channel, msg_id, data) -- luacheck: ignore 212
-	print(string.format("A receives message in room 1 (msg id=%d): %s", msg_id, data))
+	log.debug("A receives message in room 1 (msg id=%d): %s", msg_id, data)
 end)
 local ca_1 = ra_1:create_channel()
 ra_1:tail(true)
@@ -40,7 +70,7 @@ ra_1:queue_message("this 79 character message that may fill a traditional/old te
 
 -- now have node b join the room
 local rb_1 = nodeb:new_room(function(channel, msg_id, data) -- luacheck: ignore 212
-	print(string.format("B receives message in room 1 (msg id=%d): %s", msg_id, data))
+	log.debug("B receives message in room 1 (msg id=%d): %s", msg_id, data)
 end)
 rb_1:new_channel(ca_1.key:asstring(), nil)
 rb_1:tail(true)
@@ -70,7 +100,7 @@ nc_b:send_subscription()
 
 -- Lets now have node c join channel 1
 local rc_1 = nodec:new_room(function(channel, msg_id, data) -- luacheck: ignore 212
-	print(string.format("C receives message in room 1 (msg id=%d): %s", msg_id, data))
+	log.debug("C receives message in room 1 (msg id=%d): %s", msg_id, data)
 end)
 rc_1:new_channel(ca_1.key:asstring(), nil)
 rc_1:tail(true)

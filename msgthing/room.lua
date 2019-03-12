@@ -2,7 +2,15 @@
 -- This is an interface on top of the underlying channels as they rotate.
 
 local new_fifo = require "fifo"
+local cbor = require "org.conman.cbor"
 local msgthing_channel = require "msgthing.channel"
+local msgthing_message = require "msgthing.message"
+
+local heads_mt = {
+	__name = "channel.heads";
+	-- For cbor to detect as array
+	__len = function(self) return self.n end;
+}
 
 local room_methods = {}
 local room_mt = {
@@ -17,6 +25,10 @@ local function new_room(node, on_message)
 
 		-- Collection of channels known about in this room
 		channels = {};
+
+		-- Known DAG heads
+		-- Collection of full message hashes
+		heads = setmetatable({n=0}, heads_mt);
 
 		-- Messages yet to leave this node
 		queued_messages = new_fifo();
@@ -40,6 +52,50 @@ function room_methods:create_channel()
 	local channel = msgthing_channel.create(self, self.on_message)
 	self:add_channel(channel)
 	return channel
+end
+
+function room_methods:encode_heads()
+	return cbor.encode(self.heads)
+end
+
+function room_methods:decode_heads(msg_id, str)
+	local heads, pos, heads_type = cbor.decode(str)
+	if heads_type ~= "ARRAY" then
+		return nil, "invalid message: 'heads' field malformed"
+	end
+	heads.n = #heads
+	for i=1, heads.n do
+		local ref = heads[i]
+		if type(ref) ~= "table" or
+			type(ref.id) ~= "number" or
+			ref.id < 0 or ref.id > 0x80000000 or ref.id % 1 ~= 0 or
+			type(ref.full_hash) ~= "string" or
+			#ref.full_hash ~= 16 then
+			return nil, "invalid message: 'heads' field malformed"
+		elseif ref.id >= msg_id then
+			return nil, "invalid message: message id precedes 'heads'"
+		end
+	end
+	setmetatable(heads, heads_mt)
+	return heads, pos
+end
+
+function room_methods:store_message(msg_obj)
+	self.node:store_message(msg_obj)
+end
+
+-- Set to a single head. Used after e.g. uniting all other heads
+function room_methods:set_head(head)
+	self.heads = setmetatable({
+		head;
+		n = 1;
+	}, heads_mt)
+end
+
+function room_methods:add_head(head)
+	local n = self.heads.n + 1
+	self.heads[n] = head
+	self.heads.n = n
 end
 
 function room_methods:process_incoming_message(neighbour, msg_hash, msg_obj)

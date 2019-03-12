@@ -19,23 +19,27 @@ local control_room = node:new_room(function(channel, msg_id, data) -- luacheck: 
 end)
 control_room:new_channel(control_channel_key, 0)
 
+local message_prefix = string.format("relayctl started at %s", os.date())
 cq:wrap(function()
 	local neighbour = simple_protocol.connect(node, "127.0.0.1", 8000)
 
-	local message_has_been_sent = false
-	control_room:queue_message(cbor.encode({
-		message = string.format("relayctl started at %s", os.date());
-	}), function()
-		-- message was sent
-		message_has_been_sent = true
-		control_room:tail(false)
-	end)
-	if not message_has_been_sent then
-		-- the message was not sent yet; we need to tail the room
-		control_room:tail(true)
-	end
+	for i=1, 10 do
+		local message_has_been_sent = false
+		control_room:queue_message(cbor.encode({
+			message = message_prefix .. " " .. i;
+		}), function()
+			-- message was sent
+			message_has_been_sent = true
+			control_room:tail(false)
+		end)
+		if not message_has_been_sent then
+			-- the message was not sent yet; we need to tail the room
+			control_room:tail(true)
+		end
 
-	neighbour:send_messages()
+		neighbour:send_messages()
+		cqueues.sleep(1)
+	end
 end)
 local ok, err, _, thread = cq:loop()
 if not ok then
